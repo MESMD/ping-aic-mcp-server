@@ -9,7 +9,7 @@ import { EnvironmentConfig, getEnvironment, getEnvironmentNames } from './enviro
 // Fixed OAuth configuration
 const CLIENT_ID = 'AICMCPClient';
 const EXCHANGE_CLIENT_ID = 'AICMCPExchangeClient';
-const REDIRECT_URI_PORT = Number(process.env.LOCALHOST_REDIRECT_PORT) || 3000;
+const REDIRECT_URI_PORT = 3000;
 const REDIRECT_URI = `http://localhost:${REDIRECT_URI_PORT}`;
 
 /**
