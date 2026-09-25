@@ -73,7 +73,7 @@ Add this to your MCP client configuration:
 
 **Required:** Replace `your-tenant.forgeblocks.com` with your PingOne AIC tenant URL.
 
-For multiple tenants, one MCP process can route requests to all configured environments. Define one `AIC_TENANT_<NAME>` variable per tenant instead of putting an escaped JSON object inline in the MCP configuration. The server converts these variables to `AIC_TENANTS` during startup. `AIC_TENANT_ORDER` is configuration metadata, not a tenant definition, and controls the registration and default-selection order. Each tool is registered with an environment-specific name and title, such as `sandbox_queryManagedObjects` and `Query Managed Objects (sandbox)`.
+For multiple tenants, one MCP process can route requests to all configured environments. Define one `AIC_TENANT_<NAME>` variable per tenant instead of putting an escaped JSON object inline in the MCP configuration. The server converts these variables to `AIC_TENANTS` during startup. `AIC_ORDER_OF_TENANTS` controls the registration order of environment-specific tools and the default environment used when a tool call does not specify an environment. Each tool is registered with an environment-specific name and title, such as `sandbox_queryManagedObjects` and `Query Managed Objects (sandbox)`.
 
 ```json
 {
@@ -88,7 +88,7 @@ For multiple tenants, one MCP process can route requests to all configured envir
         "AIC_TENANT_SIT": "sit.example.com",
         "AIC_TENANT_STAGING": "staging.example.com",
         "AIC_TENANT_PROD": "prod.example.com",
-        "AIC_TENANT_ORDER": "sandbox,dev,sit,staging,prod"
+        "AIC_ORDER_OF_TENANTS": "sandbox,dev,sit,staging,prod"
       }
     }
   }

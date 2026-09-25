@@ -7,7 +7,7 @@ import { normalizeAicBaseUrl } from './utils/urlHelpers.js';
 
 // Validate required environment configuration
 const tenantVariables = Object.entries(process.env)
-  .filter(([name, value]) => name.startsWith('AIC_TENANT_') && name !== 'AIC_TENANT_ORDER' && value)
+  .filter(([name, value]) => name.startsWith('AIC_TENANT_') && value)
   .map(([name, value]) => [name.slice('AIC_TENANT_'.length).toLowerCase(), value as string]);
 
 if (!process.env.AIC_BASE_URL && !process.env.AIC_TENANTS && tenantVariables.length === 0) {

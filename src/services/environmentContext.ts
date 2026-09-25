@@ -22,7 +22,7 @@ function loadEnvironmentConfigs(): Map<string, EnvironmentConfig> {
       throw new Error('AIC_TENANTS must define at least one environment.');
     }
 
-    const configuredOrder = (process.env.AIC_TENANT_ORDER || '')
+    const configuredOrder = (process.env.AIC_ORDER_OF_TENANTS || '')
       .split(',')
       .map((name) => name.trim().toLowerCase())
       .filter(Boolean);
