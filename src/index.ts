@@ -14,8 +14,9 @@ const allScopes = getAllScopes();
 const environmentNames = getEnvironmentNames();
 const multiEnvironmentMode = environmentNames.length > 1;
 
-function annotateEnvironment(response: any, environmentName: string | undefined): any {
-  if (!environmentName || !response || !Array.isArray(response.content)) {
+function annotateEnvironment<T>(response: T, environmentName: string | undefined): T {
+  const content = (response as { content?: unknown } | null | undefined)?.content;
+  if (!environmentName || !Array.isArray(content)) {
     return response;
   }
 
@@ -26,7 +27,7 @@ function annotateEnvironment(response: any, environmentName: string | undefined)
         type: 'text',
         text: `Target PingOne AIC environment: ${environmentName}`
       },
-      ...response.content
+      ...content
     ]
   };
 }
@@ -66,14 +67,10 @@ allTools.forEach((tool) => {
       toolConfig.annotations = tool.annotations;
     }
 
-    server.registerTool(
-      toolName,
-      toolConfig,
-      (async (args: unknown) => {
-        const response = await runWithEnvironment(environmentName, () => tool.toolFunction(args));
-        return annotateEnvironment(response, environmentName);
-      }) as any
-    );
+    server.registerTool(toolName, toolConfig, (async (args: unknown) => {
+      const response = await runWithEnvironment(environmentName, () => tool.toolFunction(args));
+      return annotateEnvironment(response, environmentName);
+    }) as any);
   });
 });
 

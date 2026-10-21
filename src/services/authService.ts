@@ -60,7 +60,9 @@ class AuthService {
 
     const tokenAccount = environment.name === 'default' ? 'user-token' : `user-token-${environment.name}`;
     this.storage = inDocker
-      ? new FileStorage(environment.name === 'default' ? '/app/tokens/token.json' : `/app/tokens/${environment.name}.json`)
+      ? new FileStorage(
+          environment.name === 'default' ? '/app/tokens/token.json' : `/app/tokens/${environment.name}.json`
+        )
       : new KeychainStorage('PingOneAIC_MCP_Server', tokenAccount);
   }
 

@@ -65,27 +65,43 @@ function finishAuthFlow(state: string, error?: Error, authCode?: string): void {
   }
 }
 
+function failAllAuthFlows(error: Error): void {
+  [...pendingAuthFlows.keys()].forEach((state) => finishAuthFlow(state, error));
+}
+
+function findPendingState(receivedState: string): string | undefined {
+  const receivedBuffer = Buffer.from(receivedState);
+  return [...pendingAuthFlows.keys()].find((state) => {
+    const stateBuffer = Buffer.from(state);
+    return stateBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(stateBuffer, receivedBuffer);
+  });
+}
+
 function createRedirectServer(redirectPort: number): http.Server {
   return http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${redirectPort}`);
     const receivedState = url.searchParams.get('state');
     const authCode = url.searchParams.get('code');
 
+    // A redirect without a matching state may be forged, so fail closed for every pending flow.
     if (!receivedState) {
       writeAuthResponse(res, 400, false, 'Missing state parameter');
+      failAllAuthFlows(new Error('CSRF protection failed: state parameter missing'));
       return;
     }
 
-    const pending = pendingAuthFlows.get(receivedState);
-    if (!pending) {
+    const matchedState = findPendingState(receivedState);
+    const pending = matchedState ? pendingAuthFlows.get(matchedState) : undefined;
+    if (!matchedState || !pending) {
       writeAuthResponse(res, 400, false, 'Invalid state parameter');
+      failAllAuthFlows(new Error('CSRF protection failed: state mismatch'));
       return;
     }
 
     const refererRaw = req.headers['referer'] || req.headers['referrer'];
     const originRaw = req.headers['origin'];
-    const headerValue = (Array.isArray(refererRaw) ? refererRaw[0] : refererRaw) ||
-      (Array.isArray(originRaw) ? originRaw[0] : originRaw);
+    const headerValue =
+      (Array.isArray(refererRaw) ? refererRaw[0] : refererRaw) || (Array.isArray(originRaw) ? originRaw[0] : originRaw);
 
     if (headerValue) {
       let parsedHostname: string;
@@ -93,25 +109,25 @@ function createRedirectServer(redirectPort: number): http.Server {
         parsedHostname = new URL(headerValue).hostname.toLowerCase();
       } catch {
         writeAuthResponse(res, 403, false, 'Invalid request origin');
-        finishAuthFlow(receivedState, new Error('Origin validation failed: invalid URL format'));
+        finishAuthFlow(matchedState, new Error('Origin validation failed: invalid URL format'));
         return;
       }
 
       if (parsedHostname !== pending.aicBaseUrl.toLowerCase()) {
         writeAuthResponse(res, 403, false, 'Invalid request origin');
-        finishAuthFlow(receivedState, new Error('Origin validation failed: hostname mismatch'));
+        finishAuthFlow(matchedState, new Error('Origin validation failed: hostname mismatch'));
         return;
       }
     }
 
     if (!authCode) {
       writeAuthResponse(res, 400, false, 'No authorization code received');
-      finishAuthFlow(receivedState, new Error('Authorization code not found in redirect.'));
+      finishAuthFlow(matchedState, new Error('Authorization code not found in redirect.'));
       return;
     }
 
     writeAuthResponse(res, 200, true);
-    finishAuthFlow(receivedState, undefined, authCode);
+    finishAuthFlow(matchedState, undefined, authCode);
   });
 }
 
@@ -125,10 +141,12 @@ async function ensureRedirectServer(redirectPort: number): Promise<void> {
       const server = createRedirectServer(redirectPort);
       redirectServer = server;
 
-      server.once('error', (error) => {
+      server.on('error', (error) => {
         redirectServer = null;
         serverStartPromise = null;
         reject(error);
+        failAllAuthFlows(error);
+        server.close();
       });
 
       server.listen(redirectPort, () => {
@@ -157,35 +175,38 @@ function startServerAndGetAuthCode(params: {
   // Generate state for CSRF protection
   const state = crypto.randomBytes(16).toString('base64url');
 
-  return ensureRedirectServer(redirectPort).then(() => new Promise<string>((resolve, reject) => {
-    const timeoutHandle = setTimeout(() => {
-      console.error('Authentication timed out after 5 minutes');
-      finishAuthFlow(state, new Error('Authentication timeout: User did not complete login within 5 minutes'));
-    }, AUTH_TIMEOUT_MS);
+  return ensureRedirectServer(redirectPort).then(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+          console.error('Authentication timed out after 5 minutes');
+          finishAuthFlow(state, new Error('Authentication timeout: User did not complete login within 5 minutes'));
+        }, AUTH_TIMEOUT_MS);
 
-    pendingAuthFlows.set(state, {
-      resolve,
-      reject,
-      aicBaseUrl,
-      timeoutHandle,
-      onServerCreated: params.onServerCreated,
-      onServerClosed: params.onServerClosed
-    });
-    params.onServerCreated?.(redirectServer!);
+        pendingAuthFlows.set(state, {
+          resolve,
+          reject,
+          aicBaseUrl,
+          timeoutHandle,
+          onServerCreated: params.onServerCreated,
+          onServerClosed: params.onServerClosed
+        });
+        params.onServerCreated?.(redirectServer!);
 
-    const authUrl = new URL(authorizeUrl);
-    authUrl.searchParams.append('response_type', 'code');
-    authUrl.searchParams.append('client_id', clientId);
-    authUrl.searchParams.append('scope', scopes.join(' '));
-    authUrl.searchParams.append('redirect_uri', redirectUri);
-    authUrl.searchParams.append('code_challenge', codeChallenge);
-    authUrl.searchParams.append('code_challenge_method', 'S256');
-    authUrl.searchParams.append('state', state);
+        const authUrl = new URL(authorizeUrl);
+        authUrl.searchParams.append('response_type', 'code');
+        authUrl.searchParams.append('client_id', clientId);
+        authUrl.searchParams.append('scope', scopes.join(' '));
+        authUrl.searchParams.append('redirect_uri', redirectUri);
+        authUrl.searchParams.append('code_challenge', codeChallenge);
+        authUrl.searchParams.append('code_challenge_method', 'S256');
+        authUrl.searchParams.append('state', state);
 
-    void open(authUrl.toString()).catch((error: unknown) => {
-      finishAuthFlow(state, error instanceof Error ? error : new Error(String(error)));
-    });
-  }));
+        void open(authUrl.toString()).catch((error: unknown) => {
+          finishAuthFlow(state, error instanceof Error ? error : new Error(String(error)));
+        });
+      })
+  );
 }
 
 async function exchangeCodeForToken(params: {
